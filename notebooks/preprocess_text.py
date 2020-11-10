@@ -70,22 +70,22 @@ class Preprocess:
 
                 preprocessed_text = text
 
-                for word in text.split(): 
-                    if (re.match('\d+', word)):
-                        if(word.isnumeric()):
-                            preprocessed_text = preprocessed_text + '#N' + " "
-                        else:
-                            preprocessed_text = preprocessed_text + word.lower() + " "
+#                 for word in text.split(): 
+#                     if (re.match('\d+', word)):
+#                         if(word.isnumeric()):
+#                             preprocessed_text = preprocessed_text + '#N' + " "
+#                         else:
+#                             preprocessed_text = preprocessed_text + word.lower() + " "
 
-                    else:
-                        if(re.match('[a-zA-Z]+', word)):
-                            if not len(word) < 2:
-                                word = word.lower()
-    #                             word = lemmatizer.lemmatize(word, pos='v')
-                                preprocessed_text = preprocessed_text + word + " "
+#                     else:
+#                         if(re.match('[a-zA-Z]+', word)):
+#                             if not len(word) < 2:
+#                                 word = word.lower()
+#     #                             word = lemmatizer.lemmatize(word, pos='v')
+#                                 preprocessed_text = preprocessed_text + word + " "
 
-                        else:
-                            preprocessed_text = preprocessed_text + word + " "
+#                         else:
+#                             preprocessed_text = preprocessed_text + word + " "
 
                 return preprocessed_text
             
