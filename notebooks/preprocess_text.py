@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[5]:
 
 
 import re
@@ -10,7 +10,7 @@ from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 
 
-# In[145]:
+# In[6]:
 
 
 class Preprocess:
@@ -68,7 +68,7 @@ class Preprocess:
                 # Expanding noisy concatenations (Eg: algorithmआणि  -> algorithm आणि ) 
                 text = ' '.join([self.expand_concatenations(word) for word in text.split()])
 
-                preprocessed_text = text
+#                 preprocessed_text = ""
 
 #                 for word in text.split(): 
 #                     if (re.match('\d+', word)):
@@ -87,15 +87,44 @@ class Preprocess:
 #                         else:
 #                             preprocessed_text = preprocessed_text + word + " "
 
-                return preprocessed_text
+#                 return preprocessed_text
+                return text
             
             except ValueError as ve:
                 print('Error processing:\t',text)
                 return ''
-        
+    
+        def preprocess_text(self,text: str) -> str:
+
+            try:
+                if not(isinstance(text, str)): text = str(text)
+                preprocessed_text = ""
+
+                for word in text.split(): 
+                    if (re.match('\d+', word)):
+                        if(word.isnumeric()):
+                            preprocessed_text = preprocessed_text + '#N' + " "
+                        else:
+                            preprocessed_text = preprocessed_text + word.lower() + " "
+
+                    else:
+                        if(re.match('[a-zA-Z]+', word)):
+                            if not len(word) < 2:
+                                word = word.lower()
+    #                             word = lemmatizer.lemmatize(word, pos='v')
+                                preprocessed_text = preprocessed_text + word + " "
+
+                        else:
+                            preprocessed_text = preprocessed_text + word + " "
+
+                return preprocessed_text
+
+            except ValueError as ve:
+                print('Error processing:\t',text)
+                return ''
 
 
-# In[149]:
+# In[7]:
 
 
 if __name__ == '__main__':
