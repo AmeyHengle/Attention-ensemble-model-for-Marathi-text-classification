@@ -8,9 +8,10 @@ import re
 import unicodedata
 from nltk.stem import PorterStemmer 
 from nltk.stem import WordNetLemmatizer
+from queue import Queue
 
 
-# In[6]:
+# In[118]:
 
 
 class Preprocess:
@@ -122,9 +123,120 @@ class Preprocess:
             except ValueError as ve:
                 print('Error processing:\t',text)
                 return ''
+            
+        def split_devanagri_word(self,word: str, punctuations = True) -> str:
+            try:
+                q = Queue()
+                if not(isinstance(word, str)): word = str(word)
+                tokens = []
+                
+                for char in word:
+#                     print(char, '--->', unicodedata.name(char))
+
+                    if 'letter' in unicodedata.name(char).lower():
+                        if q.empty():
+                            tokens.append(char)
+                        else:
+                            while not q.empty():
+                                tokens[len(tokens)-1] += q.get() 
+                            tokens.append(char)   
+                    else:
+                        if punctuations == True:
+                            q.put(char)
+
+                while not q.empty():
+                    tokens[len(tokens)-1] += q.get() 
+                
+                return tokens
+                
+            except ValueError as ve:
+                print('Error processing:\t',text)
+                return ''
+        
+        def text2characters(self,text:str, punctuations = True)->str:
+            try:
+                if not(isinstance(text, str)): text = str(text)
+                char_sequence = ""
+                char_list = []
+                
+                for word in text.split():
+                    seq = ' '.join([char for char in self.split_devanagri_word(word, punctuations)])                
+                    char_sequence = char_sequence + seq + ' '
+    
+#                     print(word,'--->',seq)
+                    
+                return char_sequence
+            
+            except ValueError as ve:
+                print('Error processing:\t',text)
+                return ''
+            
+            
+        def tokenize_characters(self, document):
+            vocab = set()
+            cnt = 0
+            token_dict = {}
+            
+            if isinstance(document, list):
+                for text in document:
+                    char_sequence = self.text2characters(text)
+                    tokens_indic = pd.Series(trivial_tokenize_indic(char_sequence))
+                    word_counts = tokens_indic.value_counts()
+                    
+                    vocab = vocab.union(set(word_counts.keys()))
+
+                print('Total Unique Tokens (Characters): {}'.format(len(vocab)))
+
+                for char in vocab:
+                    cnt += 1
+                    token_dict[char] = cnt
+            
+            else:
+                char_sequence = self.text2characters(document)
+                tokens_indic = pd.Series(trivial_tokenize_indic(char_sequence))
+                word_counts = tokens_indic.value_counts()  
+                vocab = vocab.union(set(word_counts.keys()))
+
+                print('Total Unique Tokens (Characters): {}'.format(len(vocab)))
+
+                for char in vocab:
+                    cnt += 1
+                    token_dict[char] = cnt
+                
+            return token_dict
+
+        
+        def text_to_sequence(self,document,token_dict):
+            
+            sequence_doc = []
+            
+            if isinstance(document, list):
+                print('Total records: ',len(document))
+                cnt = 0
+                for text in document:
+                    char_array = self.text2characters(text).split()
+                    text_sequence = [token_dict[x] for x in char_array]
+                    sequence_doc.append(text_sequence)
+                    cnt+=1
+                print('Records converted: ',cnt)
+                
+            else:
+                char_array = self.text2characters(document).split()
+                text_sequence = [token_dict[x] for x in char_array]
+                sequence_doc.append(text_sequence)
+                print('Records converted: 1')
+                
+            return sequence_doc
+            
 
 
-# In[7]:
+# In[ ]:
+
+
+
+
+
+# In[80]:
 
 
 if __name__ == '__main__':
@@ -133,8 +245,9 @@ if __name__ == '__main__':
     df = pd.read_csv('../Technodifacation/Data/training_data_marathi.csv')
     
     sampletext1 = df['text'].sample().values
+    print(sampletext1)
     pp = Preprocess([])
-    sampletext2 = 'त्यांना जनतेला पटवून द्यावे लागेल99 '
+    sampletext2 = 'त्यांना जनतेला पटवून द्यावे लागेल99'
 
     test_list1 = ['त्यांना','H20', '2H20','Animal2Animal' ,'सी२ओ२', 'लागेल99', 'Animalत्यांना',
                  'त्यांनाAnimal', 'Analogy_त्यांना', 'Science२१', '१२Number', '!@)$&%!#)&$!&$!$B Bo ', '११.२२','I', '१','1','11.22','a','B','सी']
@@ -144,6 +257,78 @@ if __name__ == '__main__':
 
     for text in test_list2:
         print(text, '\t--->\t', pp.clean_text(text),'\n')   
+
+
+# In[119]:
+
+
+pp = Preprocess([])
+
+
+# In[95]:
+
+
+sample_word =  "हिरड्यांच्या"
+tokens = pp.split_devanagri_word(sample_word, punctuations=True)
+tokens
+
+
+# In[104]:
+
+
+text = 'पहिला,  स्तंभ आपल्याला अंदाज देतो.'
+
+clean_text = pp.clean_text(text)
+
+char_sequence_1 = pp.text2characters(clean_text)
+char_sequence_2 = pp.text2characters(clean_text, punctuations=False)
+print('\nText: ',clean_text,'\n\nWith Punctuations: ',char_sequence_1,'\n\nOnly Letters: ',char_sequence_2)
+
+
+# <h4>Idiotic Keras<h4>
+
+# In[117]:
+
+
+import tensorflow as tf
+
+tokenizer = tf.keras.preprocessing.text.Tokenizer(char_level = False, split = " ")
+
+tokenizer.fit_on_texts(char_sequence_1)
+
+print(tokenizer.word_counts)
+
+
+# <h4>Max Jugaad<h4>
+
+# In[91]:
+
+
+from indicnlp.tokenize.indic_tokenize import trivial_tokenize_indic
+
+tokens_indic = trivial_tokenize_indic(char_sequence_1)
+
+tokens_indic = pd.Series(tokens_indic)
+
+word_counts = tokens_indic.value_counts()
+print(word_counts)
+
+
+# <h4>Converting Devanagri Text to Char array<h4>
+
+# In[123]:
+
+
+token_dict = pp.tokenize_characters(clean_text)
+token_dict
+
+
+# In[122]:
+
+
+text_seq = pp.text_to_sequence(clean_text, token_dict)
+print(len(text_seq))
+text_seq
 
 
 # In[ ]:
