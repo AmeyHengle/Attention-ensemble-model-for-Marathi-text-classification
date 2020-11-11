@@ -8,9 +8,10 @@ import re
 import unicodedata
 from nltk.stem import PorterStemmer 
 from nltk.stem import WordNetLemmatizer
+from queue import Queue
 
 
-# In[6]:
+# In[79]:
 
 
 class Preprocess:
@@ -122,9 +123,60 @@ class Preprocess:
             except ValueError as ve:
                 print('Error processing:\t',text)
                 return ''
+            
+        def split_devanagri_word(self,word: str, punctuations = True) -> str:
+            try:
+                q = Queue()
+                if not(isinstance(word, str)): word = str(word)
+                tokens = []
+                
+                for char in word:
+#                     print(char, '--->', unicodedata.name(char))
+
+                    if 'letter' in unicodedata.name(char).lower():
+                        if q.empty():
+                            tokens.append(char)
+                        else:
+                            while not q.empty():
+                                tokens[len(tokens)-1] += q.get() 
+                            tokens.append(char)   
+                    else:
+                        if punctuations == True:
+                            q.put(char)
+
+                while not q.empty():
+                    tokens[len(tokens)-1] += q.get() 
+                
+                return tokens
+                
+            except ValueError as ve:
+                print('Error processing:\t',text)
+                return ''
+        
+        def text2characters(self,text:str, punctuations = True)->str:
+            try:
+                if not(isinstance(text, str)): text = str(text)
+                char_sequence = ""
+                char_list = []
+                
+                for word in text.split():
+                    seq = ' '.join([char for char in self.split_devanagri_word(word, punctuations)])                
+                    char_sequence = char_sequence + seq + ' '
+    
+                    print(word,'--->',seq)
+                    
+                return char_sequence
+            
+            except ValueError as ve:
+                print('Error processing:\t',text)
+                return ''
+            
+        def devanagri_tokenizer(self,char_sequence):
+            for char in char_sequence:
+                print(char)
 
 
-# In[7]:
+# In[80]:
 
 
 if __name__ == '__main__':
@@ -133,8 +185,9 @@ if __name__ == '__main__':
     df = pd.read_csv('../Technodifacation/Data/training_data_marathi.csv')
     
     sampletext1 = df['text'].sample().values
+    print(sampletext1)
     pp = Preprocess([])
-    sampletext2 = 'त्यांना जनतेला पटवून द्यावे लागेल99 '
+    sampletext2 = 'त्यांना जनतेला पटवून द्यावे लागेल99'
 
     test_list1 = ['त्यांना','H20', '2H20','Animal2Animal' ,'सी२ओ२', 'लागेल99', 'Animalत्यांना',
                  'त्यांनाAnimal', 'Analogy_त्यांना', 'Science२१', '१२Number', '!@)$&%!#)&$!&$!$B Bo ', '११.२२','I', '१','1','11.22','a','B','सी']
@@ -144,6 +197,61 @@ if __name__ == '__main__':
 
     for text in test_list2:
         print(text, '\t--->\t', pp.clean_text(text),'\n')   
+
+
+# In[81]:
+
+
+pp = Preprocess([])
+
+
+# In[ ]:
+
+
+sample_word =  "दर्शविले"
+tokens = pp.split_devanagri_word(sample_word, punctuations=True)
+tokens
+
+
+# In[82]:
+
+
+text = 'पहिला,  स्तंभ आपल्याला अंदाज देतो.'
+
+clean_text = pp.clean_text(text)
+
+char_sequence_1 = pp.text2characters(clean_text)
+char_sequence_2 = pp.text2characters(clean_text, punctuations=False)
+print('\nText: ',clean_text,'\n\nWith Punctuations: ',char_sequence_1,'\n\nOnly Letters: ',char_sequence_2)
+
+
+# <h4>Idiotic Keras<h4>
+
+# In[89]:
+
+
+import tensorflow as tf
+
+tokenizer = tf.keras.preprocessing.text.Tokenizer(char_level = True, split = " ")
+
+tokenizer.fit_on_texts(char_sequence_1)
+
+print(tokenizer.word_counts)
+
+
+# <h4>Max Jugaad<h4>
+
+# In[91]:
+
+
+from indicnlp.tokenize.indic_tokenize import trivial_tokenize_indic
+
+tokens_indic = trivial_tokenize_indic(char_sequence_1)
+
+tokens_indic = pd.Series(tokens_indic)
+
+word_counts = tokens_indic.value_counts()
+print(word_counts)
 
 
 # In[ ]:
