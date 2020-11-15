@@ -1,26 +1,27 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[5]:
+# In[10]:
 
 
 import re
 import unicodedata
-from nltk.stem import PorterStemmer 
-from nltk.stem import WordNetLemmatizer
 from queue import Queue
+import pandas as pd
+from indicnlp.tokenize.indic_tokenize import trivial_tokenize_indic
 
 
-# In[118]:
+# In[109]:
 
 
 class Preprocess:
         
         # --------------------------------------- Constructor --------------------------------------- 
-        
-        def __init__(self,stopword_list):
+   
+        def __init__(self,stopword_list,minCount = 1000):
             self.data_path = ''
             self.stopword_list = stopword_list
+            self.minCount = minCount
                 
 
         # --------------------------------------- Preprocess --------------------------------------- 
@@ -60,35 +61,20 @@ class Preprocess:
                 text = re.sub(r'<.*?>', '', text)
 
                 # Removing the punctuations
-                text = re.sub('[!#?,.:";-@#$%^&*_~<>()-]', '', text)
+                text = re.sub('[!#?,.:";-@#$%^&*_~<>()/\-]', '', text)
 
-
-                # Removing stop words
-                text = ' '.join([word for word in text.split() if word not in self.stopword_list])
+                # Removing stopwords and words below minCount 
+                if (self.minCount != 1000):
+                    print('Enabled Mincount')
+                    text = ' '.join([word for word in text.split() if word not in self.stopword_list and len(word) > self.minCount])
+                else:
+                    # Removing stop words
+                    text = ' '.join([word for word in text.split() if word not in self.stopword_list])
 
                 # Expanding noisy concatenations (Eg: algorithmआणि  -> algorithm आणि ) 
                 text = ' '.join([self.expand_concatenations(word) for word in text.split()])
 
-#                 preprocessed_text = ""
 
-#                 for word in text.split(): 
-#                     if (re.match('\d+', word)):
-#                         if(word.isnumeric()):
-#                             preprocessed_text = preprocessed_text + '#N' + " "
-#                         else:
-#                             preprocessed_text = preprocessed_text + word.lower() + " "
-
-#                     else:
-#                         if(re.match('[a-zA-Z]+', word)):
-#                             if not len(word) < 2:
-#                                 word = word.lower()
-#     #                             word = lemmatizer.lemmatize(word, pos='v')
-#                                 preprocessed_text = preprocessed_text + word + " "
-
-#                         else:
-#                             preprocessed_text = preprocessed_text + word + " "
-
-#                 return preprocessed_text
                 return text
             
             except ValueError as ve:
@@ -121,18 +107,23 @@ class Preprocess:
                 return preprocessed_text
 
             except ValueError as ve:
-                print('Error processing:\t',text)
+#                 print('Error processing:\t',text)
                 return ''
             
         def split_devanagri_word(self,word: str, punctuations = True) -> str:
             try:
                 q = Queue()
+                l_index = 0
                 if not(isinstance(word, str)): word = str(word)
                 tokens = []
                 
                 for char in word:
+                    
 #                     print(char, '--->', unicodedata.name(char))
-
+                    if not 'devanagari' in unicodedata.name(char).lower():
+                        tokens.append(char)
+                        continue
+                        
                     if 'letter' in unicodedata.name(char).lower():
                         if q.empty():
                             tokens.append(char)
@@ -143,14 +134,20 @@ class Preprocess:
                     else:
                         if punctuations == True:
                             q.put(char)
-
+                    
+                for i, char in reversed(list(enumerate(tokens.copy()))):
+                    if('devanagari' in unicodedata.name(char).lower()):
+                        l_index = i
+#                         print(l_index)
+                        break
+                        
                 while not q.empty():
-                    tokens[len(tokens)-1] += q.get() 
+                        tokens[l_index] += q.get() 
                 
                 return tokens
                 
-            except ValueError as ve:
-                print('Error processing:\t',text)
+            except Exception as e:
+#                 print('Error processing:\t',word)
                 return ''
         
         def text2characters(self,text:str, punctuations = True)->str:
@@ -178,6 +175,7 @@ class Preprocess:
             token_dict = {}
             
             if isinstance(document, list):
+#                 print('Doc')
                 for text in document:
                     char_sequence = self.text2characters(text)
                     tokens_indic = pd.Series(trivial_tokenize_indic(char_sequence))
@@ -192,6 +190,7 @@ class Preprocess:
                     token_dict[char] = cnt
             
             else:
+#                 print('sent')
                 char_sequence = self.text2characters(document)
                 tokens_indic = pd.Series(trivial_tokenize_indic(char_sequence))
                 word_counts = tokens_indic.value_counts()  
@@ -209,15 +208,18 @@ class Preprocess:
         def text_to_sequence(self,document,token_dict):
             
             sequence_doc = []
-            
             if isinstance(document, list):
                 print('Total records: ',len(document))
                 cnt = 0
                 for text in document:
-                    char_array = self.text2characters(text).split()
-                    text_sequence = [token_dict[x] for x in char_array]
-                    sequence_doc.append(text_sequence)
-                    cnt+=1
+                    try:
+                        char_array = self.text2characters(text).split()
+                        text_sequence = [token_dict[x] for x in char_array]
+                        sequence_doc.append(text_sequence)
+                        cnt+=1
+                    except:
+                        print(text)
+                        
                 print('Records converted: ',cnt)
                 
             else:
@@ -240,8 +242,6 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    
-    import pandas as pd
     df = pd.read_csv('../Technodifacation/Data/training_data_marathi.csv')
     
     sampletext1 = df['text'].sample().values
@@ -257,82 +257,3 @@ if __name__ == '__main__':
 
     for text in test_list2:
         print(text, '\t--->\t', pp.clean_text(text),'\n')   
-
-
-# In[119]:
-
-
-pp = Preprocess([])
-
-
-# In[95]:
-
-
-sample_word =  "हिरड्यांच्या"
-tokens = pp.split_devanagri_word(sample_word, punctuations=True)
-tokens
-
-
-# In[104]:
-
-
-text = 'पहिला,  स्तंभ आपल्याला अंदाज देतो.'
-
-clean_text = pp.clean_text(text)
-
-char_sequence_1 = pp.text2characters(clean_text)
-char_sequence_2 = pp.text2characters(clean_text, punctuations=False)
-print('\nText: ',clean_text,'\n\nWith Punctuations: ',char_sequence_1,'\n\nOnly Letters: ',char_sequence_2)
-
-
-# <h4>Idiotic Keras<h4>
-
-# In[117]:
-
-
-import tensorflow as tf
-
-tokenizer = tf.keras.preprocessing.text.Tokenizer(char_level = False, split = " ")
-
-tokenizer.fit_on_texts(char_sequence_1)
-
-print(tokenizer.word_counts)
-
-
-# <h4>Max Jugaad<h4>
-
-# In[91]:
-
-
-from indicnlp.tokenize.indic_tokenize import trivial_tokenize_indic
-
-tokens_indic = trivial_tokenize_indic(char_sequence_1)
-
-tokens_indic = pd.Series(tokens_indic)
-
-word_counts = tokens_indic.value_counts()
-print(word_counts)
-
-
-# <h4>Converting Devanagri Text to Char array<h4>
-
-# In[123]:
-
-
-token_dict = pp.tokenize_characters(clean_text)
-token_dict
-
-
-# In[122]:
-
-
-text_seq = pp.text_to_sequence(clean_text, token_dict)
-print(len(text_seq))
-text_seq
-
-
-# In[ ]:
-
-
-
-
