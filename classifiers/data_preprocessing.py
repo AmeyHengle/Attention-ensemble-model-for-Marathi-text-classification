@@ -9,8 +9,10 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import LabelEncoder
 from nltk.util import ngrams
-from nltk.stem import WordNetLemmatizer
 from collections import Counter
+import unicodedata
+from gensim.corpora import Dictionary
+from gensim.models.ldamodel import LdaModel
 
 
 
@@ -20,40 +22,120 @@ def read_data(path):
     return pd.read_csv(path)
 
 
+
+# ------------------------------------------ Get Stopwords ------------------------------------------
+    
+def get_stopwords(path):
+    file = open(path, "r")
+    stopword_list = []
+    for row in file:
+        row = row.replace("\n", "")
+        stopword_list.append(row)
+    return stopword_list
+        
+    
+    
+# ------------------------------------------ Clean Data ------------------------------------------ 
+
+# def clean_text(text):
+#     #Removing unprintable characters
+#     text = ''.join(x for x in text if x.isprintable())
+
+#     # Cleaning the urls
+#     text = re.sub(r'https?://\S+|www\.\S+', '', text)
+
+#     # Cleaning the html elements
+#     text = re.sub(r'<.*?>', '', text)
+
+#     # Removing the punctuations
+#     text = re.sub('[!#?,.:";-@#$%^&*_~<>()-]', '', text)
+    
+#     text = " ".join(word.lower() for word in text.split())
+#     return text
+
+
+
 # ------------------------------------------ Preprocess Data ------------------------------------------
 
-def preprocess_data(text):
-    lemmatizer = WordNetLemmatizer()
-    with open("../marathi-stopwords.txt", "r", encoding='utf-8') as file:
-        stopword_list = file.read()
-        stopword_list = set(stopword_list.split())
-    file.close()
+def expand_concatenations(self, word):
+
+
+    if not re.match('[a-zA-Z]+', word) or re.match('/d+',word):
+        for i in range(len(word)):
+            if not('DEVANAGARI ' in unicodedata.name(word[i])):
+                word = word[:i] if( len(word[i:]) < 2 and not word[i:].isnumeric()) else word[:i] + " " + word[i:]
+                break
+    else:
+        for i in range(len(word)):
+            if ('DEVANAGARI ' in unicodedata.name(word[i])):
+                word = word[i:] if( len(word[:i]) < 2 and not word[:i].isnumeric() ) else word[:i] + " " + word[i:]
+                break
+
+    return(word)
     
-    # Cleaning the urls
-    text = re.sub(r'https?://\S+|www\.\S+', '', text)
+        
+def clean_text(self,text: str) -> str:
+    try:
+        special_chars = r'''!()-[]{};:'"\,<>./?@#$%^&*_~'''
+        stemmer = PorterStemmer()
+        lemmatizer = WordNetLemmatizer()
 
-    # Cleaning the html elements
-    text = re.sub(r'<.*?>', '', text)
+        if not(isinstance(text, str)): text = str(text)
 
-    # Removing the punctuations
-    #text = re.sub('\W*', '', text)
-    text = re.sub('[!#?,.:";-@#$%^&*_~<>()]', ' ', text)
+        #Removing unprintable characters
+        text = ''.join(x for x in text if x.isprintable())
 
-    # Removing stop words
-    text = [word for word in text.split() if word not in stopword_list]
+        # Cleaning the urls
+        text = re.sub(r'https?://\S+|www\.\S+', '', text)
 
-    # Lemmatize english words
-    temp = ""
-    for word in text:
-        if re.match('[a-zA-Z]+', word): 
-            word = word.lower()
-            x = lemmatizer.lemmatize(word)
-        temp = temp + word + " "
+        # Cleaning the html elements
+        text = re.sub(r'<.*?>', '', text)
 
-    # Replacing numbers with #s
-    temp = re.sub('[0-9]+', '[DIGIT]', temp)  
+        # Removing the punctuations
+        text = re.sub('[!#?,.:";-@#$%^&*_~<>()/\-]', '', text)
 
-    return temp.strip() 
+
+        # Removing stop words
+        text = ' '.join([word for word in text.split() if word not in self.stopword_list])
+
+        # Expanding noisy concatenations (Eg: algorithmआणि  -> algorithm आणि ) 
+        text = ' '.join([self.expand_concatenations(word) for word in text.split()])
+
+        return text
+
+    except ValueError as ve:
+        print('Error processing:\t',text)
+        return ''
+
+def preprocess_text(self,text: str) -> str:
+
+    try:
+        if not(isinstance(text, str)): text = str(text)
+        preprocessed_text = ""
+
+        for word in text.split(): 
+            if (re.match('\d+', word)):
+                if(word.isnumeric()):
+                    preprocessed_text = preprocessed_text + '#N' + " "
+                else:
+                    preprocessed_text = preprocessed_text + word.lower() + " "
+
+            else:
+                if(re.match('[a-zA-Z]+', word)):
+                    if not len(word) < 2:
+                        word = word.lower()
+#                             word = lemmatizer.lemmatize(word, pos='v')
+                        preprocessed_text = preprocessed_text + word + " "
+
+                else:
+                    preprocessed_text = preprocessed_text + word + " "
+
+        return preprocessed_text
+
+    except ValueError as ve:
+#                 print('Error processing:\t',text)
+        return ''        
+
     
     
 # ----------------------------------------- BOW Vectorizer -----------------------------------------
@@ -65,6 +147,7 @@ def custom_analyzer(text):
         yield w
 
         
+        
 def bow_vectorize(x_train, x_val, min_df):
         bow_vectorizer = CountVectorizer(analyzer=custom_analyzer, min_df=min_df)
         bow_vectorizer.fit(x_train)
@@ -73,6 +156,18 @@ def bow_vectorize(x_train, x_val, min_df):
         return bow_vectorizer, bow_x_train, bow_x_val
 
 
+
+# ---------------------------------- character-level Count Vectorizer --------------------------------
+
+def char_bow_vectorize(x_train, x_val, min_df):
+        char_bow_vectorizer = CountVectorizer(analyzer='char', ngram_range=(2,3))
+        char_bow_vectorizer.fit(x_train)
+        char_bow_x_train = char_bow_vectorizer.transform(x_train)
+        char_bow_x_val = char_bow_vectorizer.transform(x_val)
+        return char_bow_vectorizer, char_bow_x_train, char_bow_x_val
+    
+    
+    
 # ------------------------------------- bi/trigram TF-IDF Vectorizer -----------------------------------
 
 def tfidf_vectorize(x_train, x_val, min_df):
@@ -81,6 +176,7 @@ def tfidf_vectorize(x_train, x_val, min_df):
     tfidf_x_train = tfidf_vectorizer.transform(x_train)
     tfidf_x_val = tfidf_vectorizer.transform(x_val)
     return tfidf_vectorizer, tfidf_x_train, tfidf_x_val
+
 
 
 # ------------------------------------- unigram TF-IDF Vectorizer -----------------------------------
@@ -93,6 +189,7 @@ def n_gram_tfidf_vectorize(x_train, x_val, min_df):
     return n_gram_tfidf_vectorizer, n_gram_tfidf_x_train, n_gram_tfidf_x_val
 
 
+
 # ---------------------------------- character-level TF-IDF Vectorizer --------------------------------
 
 def char_tfidf_vectorize(x_train, x_val):
@@ -101,6 +198,33 @@ def char_tfidf_vectorize(x_train, x_val):
     char_tfidf_x_train = char_tfidf_vectorizer.transform(x_train)
     char_tfidf_x_val = char_tfidf_vectorizer.transform(x_val)
     return char_tfidf_vectorizer, char_tfidf_x_train, char_tfidf_x_val
+
+
+
+# ----------------------------------------- tokenizing -----------------------------------------
+
+def tokenize_text(corpus, x_train, x_val):
+    tokenizer = Tokenizer(oov_token='[OOV]')
+    tokenizer.fit_on_texts(corpus)
+    x_train_tokenzied = tokenizer.texts_to_sequences(x_train)
+    x_val_tokenzied = tokenizer.texts_to_sequences(x_val)
+    return tokenizer, x_train_tokenzied, x_val_tokenzied
+    
+    
+    
+# ----------------------------------------- Pading and Truncating -----------------------------------------
+    
+def pad_text(x_train_tokenzied, x_val_tokenzied, pad_len, padding_type='post', truncating_type='post'):    
+    x_train_padded = np.asarray(pad_sequences(x_train_tokenzied, 
+                                              padding=padding_type, 
+                                              truncating=truncating_type, 
+                                              maxlen=pad_len))
+    x_val_padded = np.asarray(pad_sequences(x_val_tokenzied, 
+                                            padding=padding_type, 
+                                            truncating=truncating_type, 
+                                            maxlen=pad_len))
+    return x_train_padded, x_val_padded
+
 
 
 # ----------------------------------- Integer encoding labels ------------------------------------
@@ -113,19 +237,20 @@ def label_encoder(y_train, y_test):
     return y_train, y_test
 
 
+
 # ----------------------------------------- Get Word Embeddings -----------------------------------------
 
-def get_embedding_matrix(embedding_path, vocab):
+def get_embedding_matrix(embedding_path, vocab, embedding_dim):
     cnt = 0
-    vocab_words = set(vocab.keys())
-    embedding_matrix = np.zeros((len(vocab)+1, 300))
-    embedding_file = open(embedding_path, 'r')
+    vocab_words = set(vocab)
+    embedding_matrix = np.zeros((len(vocab)+1, embedding_dim))
+    embedding_file = open(embedding_path, 'r',encoding = 'utf8')
     for row in embedding_file:
         row = row.split()
         word = row[0].strip()
         if word in vocab_words:
             wv = np.asarray(row[1:], dtype='float32')
-            if len(wv) == 300:
+            if len(wv) == embedding_dim:
                 embedding_matrix[vocab[word]] = wv
                 cnt = cnt + 1
     print(cnt)
@@ -133,8 +258,8 @@ def get_embedding_matrix(embedding_path, vocab):
     return embedding_matrix
 
 
-# ----------------------------------------- Get Sentence Embeddings -----------------------------------------
 
+# ----------------------------------------- Get Sentence Embeddings -----------------------------------------
 
 def get_sentence_embedding(embedding_matrix, corpus, option='bow'):
     all_sentence_embeddings = []
@@ -160,57 +285,52 @@ def get_sentence_embedding(embedding_matrix, corpus, option='bow'):
     
     else:
         print("Invalid option")
-        return text
-    
+        return text    
 
-# ----------------------------------------- tokenizer and pad for neural networks -----------------------------------------
     
-def tokenizer_and_pad_training(x_train, x_val, pad_len, padding_type='post', truncating_type='post'):
-    tokenizer = Tokenizer(oov_token='[OOV]')
-    tokenizer.fit_on_texts(x_train)
-    x_train_padded = tokenizer.texts_to_sequences(x_train)
-    x_val_padded = tokenizer.texts_to_sequences(x_val)
+# ----------------------------------------- Prepare Data for LDA input -----------------------------------------
+
+def prepare_LDA_input(corpus, LDA_model):
+    # Prepare input to LDA model
+    corpus = [clean_text(text).split() for text in corpus]
+    dict_corpus = Dictionary(corpus)
+    dict_corpus.filter_extremes(no_below=5, no_above=0.3, keep_n=None)
+    bow_corpus = [dict_corpus.doc2bow(c) for c in corpus]
     
-    x_train_padded = np.asarray(pad_sequences(x_train_padded, 
-                                              padding=padding_type, 
-                                              truncating=truncating_type, 
-                                              maxlen=pad_len))
-    x_val_padded = np.asarray(pad_sequences(x_val_padded, 
-                                            padding=padding_type, 
-                                            truncating=truncating_type, 
-                                            maxlen=pad_len))
-    return tokenizer, x_train_padded, x_val_padded
+    # Get topic-doc vector
+    LDA_input = []
+    for doc in bow_corpus:
+        LDA_input.append(LDA_model.get_document_topics(doc))
+    
+    # Add missing probabilities
+    for doc in LDA_input:
+        index = []
+        true_index = set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        for i in range(len(doc)):
+            index.append(doc[i][0])
+        new_index = true_index- set(index)
+        for j in new_index:
+            doc.extend([(j, 0.0)])
+        doc.sort() 
+        
+    # Create input matrix
+    LDA_doc = []
+    for doc in LDA_input:
+        LDA_doc.append(np.asarray([doc[0][1], doc[1][1], doc[2][1], doc[3][1],
+                                   doc[4][1], doc[5][1], doc[6][1], doc[7][1],
+                                   doc[8][1], doc[9][1], doc[10][1], doc[11][1]], dtype='float32'))
+    LDA_doc = np.array(LDA_doc)
+    return LDA_doc
+
 
 
 # ----------------------------------------- Get unigrams -----------------------------------------
 
-def get_unigrams(corpus):  
+def get_unigrams(corpus):
+    unigram_freq = {}
     corpus = " ".join(x for x in corpus)
     corpus = [word for word in corpus.split() if word not in punctuation]
     unigrams = ngrams(corpus, 1)
-    unigram_freq = Counter(unigrams)       
+    for x in Counter(unigrams).most_common():
+        unigram_freq[x[0][0]] = x[1]
     return unigram_freq
-
-
- # ------------------------------------- Convert grams to dict ------------------------------------
-
-def counter_to_dict(counter):
-    wordcloud_dict = {}
-    gram = len(counter.most_common(1)[0][0])
-
-    if gram == 1:
-        for x in counter.most_common():
-            wordcloud_dict[x[0][0]] = x[1]
-
-    elif gram == 2:
-        for x in counter.most_common():
-            wordcloud_dict[x[0][0]+" "+x[0][1]] = round(x[1], 2)
-
-    else:
-        for x in counter.most_common():
-            wordcloud_dict[x[0][0]+" "+x[0][1]+" "+x[0][2]] = round(x[1], 2)
-
-    deleted = [key for key in wordcloud_dict if wordcloud_dict[key] < 2]
-    for key in deleted: del(wordcloud_dict[key])
-
-    return wordcloud_dict
